@@ -1,5 +1,5 @@
 // แทนที่ URL นี้ด้วย Web App URL ที่ได้จาก Google Apps Script
-const GOOGLE_SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyv9kt4vMRf8GRllGqZ8XxMQYl6cRQymAf7ZkrHqeiaORh7TEZkUvSOjxRhMtOSvr7Hfw/exec';
 
 document.getElementById('vendingForm').addEventListener('submit', function(e) {
     e.preventDefault();

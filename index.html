@@ -1,186 +1,3 @@
-// แทนที่ URL นี้ด้วย Web App URL ที่ได้จาก Google Apps Script
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyv9kt4vMRf8GRllGqZ8XxMQYl6cRQymAf7ZkrHqeiaORh7TEZkUvSOjxRhMtOSvr7Hfw/exec';
-
-document.getElementById('vendingForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    // แสดงสถานะการโหลด
-    document.getElementById('loading').style.display = 'block';
-    
-    // รวบรวมข้อมูลจากฟอร์ม
-    const formData = {
-        vendingCount: document.getElementById('vendingCount').value,
-        location: document.getElementById('location').value,
-        contactName: document.getElementById('contactName').value,
-        phone: document.getElementById('phone').value,
-        email: document.getElementById('email').value,
-        businessType: document.getElementById('businessType').value,
-        budget: document.getElementById('budget').value,
-        timeline: document.getElementById('timeline').value,
-        additionalInfo: document.getElementById('additionalInfo').value,
-        latitude: document.getElementById('latitude').value,
-        longitude: document.getElementById('longitude').value
-    };
-    
-    // ส่งข้อมูลไป Google Sheet ผ่าน Google Apps Script
-    fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors', // สำคัญ! เพื่อหลีกเลี่ยง CORS issues
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData)
-    })
-    .then(() => {
-        // เนื่องจากใช้ no-cors จะไม่ได้รับ response กลับมา
-        // แต่ถ้าไม่มี error แสดงว่าส่งสำเร็จ
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('successMessage').style.display = 'block';
-        
-        // เลื่อนไปที่ข้อความสำเร็จ
-        document.getElementById('successMessage').scrollIntoView({ 
-            behavior: 'smooth' 
-        });
-        
-        // รีเซ็ตฟอร์มหลังจากแสดงข้อความสำเร็จ
-        setTimeout(function() {
-            document.getElementById('vendingForm').reset();
-            document.getElementById('successMessage').style.display = 'none';
-        }, 5000);
-    })
-    .catch(error => {
-        document.getElementById('loading').style.display = 'none';
-        console.error('Error:', error);
-        alert('เกิดข้อผิดพลาดในการส่งข้อมูล กรุณาลองใหม่อีกครั้ง');
-    });
-});
-
-// ฟังก์ชันจัดรูปแบบเบอร์โทรศัพท์
-document.getElementById('phone').addEventListener('input', function(e) {
-    let value = e.target.value.replace(/\D/g, '');
-    if (value.length >= 10) {
-        value = value.substring(0, 10);
-        value = value.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3');
-    }
-    e.target.value = value;
-});
-
-// ฟังก์ชันแชร์โลเคชั่น
-document.getElementById('shareLocationBtn').addEventListener('click', function() {
-    const btn = this;
-    const locationInput = document.getElementById('location');
-    const locationStatus = document.getElementById('locationStatus');
-    const latInput = document.getElementById('latitude');
-    const lngInput = document.getElementById('longitude');
-
-    if (!navigator.geolocation) {
-        showLocationStatus('error', '❌ เบราว์เซอร์ของคุณไม่รองรับการแชร์โลเคชั่น');
-        return;
-    }
-
-    // แสดงสถานะการโหลด
-    btn.classList.add('loading');
-    btn.innerHTML = '<span class="icon">⏳</span>';
-    showLocationStatus('loading', '📍 กำลังค้นหาตำแหน่งของคุณ...');
-
-    navigator.geolocation.getCurrentPosition(
-        function(position) {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
-            
-            // เก็บพิกัด
-            latInput.value = lat;
-            lngInput.value = lng;
-
-            // แปลงพิกัดเป็นที่อยู่
-            fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=th`)
-                .then(response => response.json())
-                .then(data => {
-                    let address = '';
-                    if (data.locality) {
-                        address += data.locality;
-                    }
-                    if (data.city && data.city !== data.locality) {
-                        address += (address ? ', ' : '') + data.city;
-                    }
-                    if (data.principalSubdivision) {
-                        address += (address ? ', ' : '') + data.principalSubdivision;
-                    }
-                    if (data.countryName) {
-                        address += (address ? ', ' : '') + data.countryName;
-                    }
-
-                    if (address) {
-                        locationInput.value = address;
-                        showLocationStatus('success', `✅ ตำแหน่งปัจจุบัน: ${address}`);
-                    } else {
-                        locationInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                        showLocationStatus('success', '✅ ได้พิกัดแล้ว แต่ไม่สามารถแปลงเป็นที่อยู่ได้');
-                    }
-                })
-                .catch(error => {
-                    // หากแปลงที่อยู่ไม่ได้ ใช้พิกัดแทน
-                    locationInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                    showLocationStatus('success', '✅ ได้พิกัดแล้ว: ' + locationInput.value);
-                })
-                .finally(() => {
-                    btn.classList.remove('loading');
-                    btn.innerHTML = '<span class="icon">🎯</span>';
-                });
-        },
-        function(error) {
-            btn.classList.remove('loading');
-            btn.innerHTML = '<span class="icon">🎯</span>';
-            
-            let errorMsg = '';
-            switch(error.code) {
-                case error.PERMISSION_DENIED:
-                    errorMsg = '❌ คุณปฏิเสธการแชร์โลเคชั่น กรุณาอนุญาตในเบราว์เซอร์';
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                    errorMsg = '❌ ไม่สามารถหาตำแหน่งของคุณได้';
-                    break;
-                case error.TIMEOUT:
-                    errorMsg = '❌ หมดเวลาในการค้นหาตำแหน่ง';
-                    break;
-                default:
-                    errorMsg = '❌ เกิดข้อผิดพลาดในการค้นหาตำแหน่ง';
-                    break;
-            }
-            showLocationStatus('error', errorMsg);
-        },
-        {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 300000 // 5 นาที
-        }
-    );
-});
-
-function showLocationStatus(type, message) {
-    const locationStatus = document.getElementById('locationStatus');
-    locationStatus.className = `location-status ${type}`;
-    locationStatus.textContent = message;
-    
-    if (type === 'success') {
-        setTimeout(() => {
-            locationStatus.style.display = 'none';
-        }, 5000);
-    }
-}
-
-// การตรวจสอบฟอร์ม
-const inputs = document.querySelectorAll('input[required], select[required]');
-inputs.forEach(input => {
-    input.addEventListener('blur', function() {
-        if (this.value.trim() === '') {
-            this.style.borderColor = '#e74c3c';
-        } else {
-            this.style.borderColor = '#27ae60';
-        }
-    });
-});
-
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -343,6 +160,12 @@ inputs.forEach(input => {
             transform: translateY(-1px);
         }
 
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         .submit-btn::before {
             content: '';
             position: absolute;
@@ -388,6 +211,12 @@ inputs.forEach(input => {
             border-radius: 10px;
             margin-bottom: 20px;
             text-align: center;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
         }
 
         .location-input-container {
@@ -446,10 +275,7 @@ inputs.forEach(input => {
             background: #d4edda;
             color: #155724;
             border: 1px solid #c3e6cb;
-        .loading {
-            display: none;
-            text-align: center;
-            margin: 20px 0;
+            display: block;
         }
 
         .location-status.error {
@@ -495,17 +321,17 @@ inputs.forEach(input => {
                 ทีมงานจะติดต่อกลับภายใน 24 ชั่วโมง เพื่อแจ้งรายละเอียดและนัดหมายสำรวจพื้นที่
             </div>
 
+            <div class="success-message" id="successMessage">
+                <h3>✅ ส่งข้อมูลเรียบร้อยแล้ว!</h3>
+                <p>ขอบคุณสำหรับความสนใจ ทีมงานจะติดต่อกลับโดยเร็วที่สุด</p>
+            </div>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>กำลังส่งข้อมูล...</p>
+            </div>
+
             <form id="vendingForm">
-                <div class="success-message" id="successMessage">
-                    <h3>✅ ส่งข้อมูลเรียบร้อยแล้ว!</h3>
-                    <p>ขอบคุณสำหรับความสนใจ ทีมงานจะติดต่อกลับโดยเร็วที่สุด</p>
-                </div>
-
-                <div class="loading" id="loading">
-                    <div class="spinner"></div>
-                    <p>กำลังส่งข้อมูล...</p>
-                </div>
-
                 <div class="form-group">
                     <label for="vendingCount">
                         <span class="icon">📊</span>จำนวนตู้ที่ต้องการ<span class="required">*</span>
@@ -610,7 +436,7 @@ inputs.forEach(input => {
                     <textarea id="additionalInfo" name="additionalInfo" placeholder="รายละเอียดเพิ่มเติม เช่น ประเภทสินค้าที่ต้องการจำหน่าย, จำนวนคนที่ใช้บริการ, เวลาทำการ, ข้อสงสัยต่างๆ"></textarea>
                 </div>
 
-                <button type="submit" class="submit-btn">
+                <button type="submit" class="submit-btn" id="submitBtn">
                     <span class="icon">🚀</span>ส่งข้อมูลสอบถาม
                 </button>
             </form>
@@ -618,31 +444,72 @@ inputs.forEach(input => {
     </div>
 
     <script>
+        // แทนที่ URL นี้ด้วย Web App URL ที่ได้จาก Google Apps Script
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyv9kt4vMRf8GRllGqZ8XxMQYl6cRQymAf7ZkrHqeiaORh7TEZkUvSOjxRhMtOSvr7Hfw/exec';
+
         document.getElementById('vendingForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
-            // Show loading
-            document.getElementById('loading').style.display = 'block';
+            // แสดงสถานะการโหลด
+            const loadingEl = document.getElementById('loading');
+            const submitBtn = document.getElementById('submitBtn');
+            const successMsg = document.getElementById('successMessage');
             
-            // Simulate form submission
-            setTimeout(function() {
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('successMessage').style.display = 'block';
+            loadingEl.style.display = 'block';
+            submitBtn.disabled = true;
+            successMsg.style.display = 'none';
+            
+            // รวบรวมข้อมูลจากฟอร์ม
+            const formData = {
+                vendingCount: document.getElementById('vendingCount').value,
+                location: document.getElementById('location').value,
+                contactName: document.getElementById('contactName').value,
+                phone: document.getElementById('phone').value,
+                email: document.getElementById('email').value,
+                businessType: document.getElementById('businessType').value,
+                budget: document.getElementById('budget').value,
+                timeline: document.getElementById('timeline').value,
+                additionalInfo: document.getElementById('additionalInfo').value,
+                latitude: document.getElementById('latitude').value,
+                longitude: document.getElementById('longitude').value
+            };
+            
+            // ส่งข้อมูลไป Google Sheet ผ่าน Google Apps Script
+            fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors', // สำคัญ! เพื่อหลีกเลี่ยง CORS issues
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(() => {
+                // เนื่องจากใช้ no-cors จะไม่ได้รับ response กลับมา
+                // แต่ถ้าไม่มี error แสดงว่าส่งสำเร็จ
+                loadingEl.style.display = 'none';
+                successMsg.style.display = 'block';
+                submitBtn.disabled = false;
                 
-                // Scroll to success message
-                document.getElementById('successMessage').scrollIntoView({ 
+                // เลื่อนไปที่ข้อความสำเร็จ
+                successMsg.scrollIntoView({ 
                     behavior: 'smooth' 
                 });
                 
-                // Reset form after showing success
+                // รีเซ็ตฟอร์มหลังจากแสดงข้อความสำเร็จ
                 setTimeout(function() {
                     document.getElementById('vendingForm').reset();
-                }, 3000);
-                
-            }, 2000);
+                    successMsg.style.display = 'none';
+                }, 5000);
+            })
+            .catch(error => {
+                loadingEl.style.display = 'none';
+                submitBtn.disabled = false;
+                console.error('Error:', error);
+                alert('เกิดข้อผิดพลาดในการส่งข้อมูล กรุณาลองใหม่อีกครั้ง');
+            });
         });
 
-        // Phone number formatting
+        // ฟังก์ชันจัดรูปแบบเบอร์โทรศัพท์
         document.getElementById('phone').addEventListener('input', function(e) {
             let value = e.target.value.replace(/\D/g, '');
             if (value.length >= 10) {
@@ -652,7 +519,7 @@ inputs.forEach(input => {
             e.target.value = value;
         });
 
-        // Geolocation functionality
+        // ฟังก์ชันแชร์โลเคชั่น
         document.getElementById('shareLocationBtn').addEventListener('click', function() {
             const btn = this;
             const locationInput = document.getElementById('location');
@@ -665,7 +532,7 @@ inputs.forEach(input => {
                 return;
             }
 
-            // Show loading state
+            // แสดงสถานะการโหลด
             btn.classList.add('loading');
             btn.innerHTML = '<span class="icon">⏳</span>';
             showLocationStatus('loading', '📍 กำลังค้นหาตำแหน่งของคุณ...');
@@ -675,11 +542,11 @@ inputs.forEach(input => {
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude;
                     
-                    // Store coordinates
+                    // เก็บพิกัด
                     latInput.value = lat;
                     lngInput.value = lng;
 
-                    // Get address from coordinates using reverse geocoding
+                    // แปลงพิกัดเป็นที่อยู่
                     fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=th`)
                         .then(response => response.json())
                         .then(data => {
@@ -706,7 +573,7 @@ inputs.forEach(input => {
                             }
                         })
                         .catch(error => {
-                            // If reverse geocoding fails, just use coordinates
+                            // หากแปลงที่อยู่ไม่ได้ ใช้พิกัดแทน
                             locationInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
                             showLocationStatus('success', '✅ ได้พิกัดแล้ว: ' + locationInput.value);
                         })
@@ -739,7 +606,7 @@ inputs.forEach(input => {
                 {
                     enableHighAccuracy: true,
                     timeout: 10000,
-                    maximumAge: 300000 // 5 minutes
+                    maximumAge: 300000 // 5 นาที
                 }
             );
         });
@@ -756,7 +623,7 @@ inputs.forEach(input => {
             }
         }
 
-        // Form validation visual feedback
+        // การตรวจสอบฟอร์ม
         const inputs = document.querySelectorAll('input[required], select[required]');
         inputs.forEach(input => {
             input.addEventListener('blur', function() {

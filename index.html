@@ -213,6 +213,17 @@
             text-align: center;
         }
 
+        .error-message {
+            display: none;
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
         .loading {
             display: none;
             text-align: center;
@@ -306,6 +317,17 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        .debug-info {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            margin-top: 20px;
+            border-radius: 5px;
+            font-size: 12px;
+            color: #6c757d;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -324,6 +346,11 @@
             <div class="success-message" id="successMessage">
                 <h3>✅ ส่งข้อมูลเรียบร้อยแล้ว!</h3>
                 <p>ขอบคุณสำหรับความสนใจ ทีมงานจะติดต่อกลับโดยเร็วที่สุด</p>
+            </div>
+
+            <div class="error-message" id="errorMessage">
+                <h3>❌ เกิดข้อผิดพลาด!</h3>
+                <p id="errorText">ไม่สามารถส่งข้อมูลได้ กรุณาลองใหม่อีกครั้ง</p>
             </div>
 
             <div class="loading" id="loading">
@@ -440,6 +467,11 @@
                     <span class="icon">🚀</span>ส่งข้อมูลสอบถาม
                 </button>
             </form>
+
+            <div class="debug-info" id="debugInfo">
+                <strong>Debug Information:</strong><br>
+                <div id="debugContent"></div>
+            </div>
         </div>
     </div>
 
@@ -447,17 +479,65 @@
         // แทนที่ URL นี้ด้วย Web App URL ที่ได้จาก Google Apps Script
         const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxeBezlnMBnFlOB_y-KwVUXEEmCk6ZujhcFnLtvDWXaGyC80GimrIxC-e0F3NbpVLuy8g/exec';
 
-        document.getElementById('vendingForm').addEventListener('submit', function(e) {
+        // ฟังก์ชันส่งข้อมูล
+        async function submitForm(formData) {
+            const response = await fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams(formData).toString()
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.text();
+            return result;
+        }
+
+        // ฟังก์ชันทางเลือกสำหรับ CORS issues
+        function submitFormCORS(formData) {
+            return fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams(formData).toString()
+            });
+        }
+
+        // ฟังก์ชันแสดง Debug Info
+        function showDebugInfo(data) {
+            const debugInfo = document.getElementById('debugInfo');
+            const debugContent = document.getElementById('debugContent');
+            
+            debugContent.innerHTML = `
+                URL: ${GOOGLE_SCRIPT_URL}<br>
+                Method: POST<br>
+                Data: ${JSON.stringify(data, null, 2)}<br>
+                Time: ${new Date().toLocaleString('th-TH')}
+            `;
+            
+            debugInfo.style.display = 'block';
+        }
+
+        document.getElementById('vendingForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            // แสดงสถานะการโหลด
             const loadingEl = document.getElementById('loading');
             const submitBtn = document.getElementById('submitBtn');
             const successMsg = document.getElementById('successMessage');
+            const errorMsg = document.getElementById('errorMessage');
+            const errorText = document.getElementById('errorText');
             
+            // รีเซ็ตสถานะ
             loadingEl.style.display = 'block';
             submitBtn.disabled = true;
             successMsg.style.display = 'none';
+            errorMsg.style.display = 'none';
             
             // รวบรวมข้อมูลจากฟอร์ม
             const formData = {
@@ -471,42 +551,62 @@
                 timeline: document.getElementById('timeline').value,
                 additionalInfo: document.getElementById('additionalInfo').value,
                 latitude: document.getElementById('latitude').value,
-                longitude: document.getElementById('longitude').value
+                longitude: document.getElementById('longitude').value,
+                timestamp: new Date().toISOString()
             };
-            
-            // ส่งข้อมูลไป Google Sheet ผ่าน Google Apps Script
-            fetch(GOOGLE_SCRIPT_URL, {
-                method: 'POST',
-                mode: 'no-cors', // สำคัญ! เพื่อหลีกเลี่ยง CORS issues
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(formData)
-            })
-            .then(() => {
-                // เนื่องจากใช้ no-cors จะไม่ได้รับ response กลับมา
-                // แต่ถ้าไม่มี error แสดงว่าส่งสำเร็จ
+
+            // แสดง Debug Info
+            showDebugInfo(formData);
+
+            try {
+                // ลองส่งด้วยวิธีปกติก่อน
+                await submitForm(formData);
+                
+                // ถ้าสำเร็จ
                 loadingEl.style.display = 'none';
                 successMsg.style.display = 'block';
                 submitBtn.disabled = false;
                 
-                // เลื่อนไปที่ข้อความสำเร็จ
-                successMsg.scrollIntoView({ 
-                    behavior: 'smooth' 
-                });
+                successMsg.scrollIntoView({ behavior: 'smooth' });
                 
-                // รีเซ็ตฟอร์มหลังจากแสดงข้อความสำเร็จ
+                // รีเซ็ตฟอร์มหลังจาก 5 วินาที
                 setTimeout(function() {
                     document.getElementById('vendingForm').reset();
                     successMsg.style.display = 'none';
+                    document.getElementById('debugInfo').style.display = 'none';
                 }, 5000);
-            })
-            .catch(error => {
-                loadingEl.style.display = 'none';
-                submitBtn.disabled = false;
-                console.error('Error:', error);
-                alert('เกิดข้อผิดพลาดในการส่งข้อมูล กรุณาลองใหม่อีกครั้ง');
-            });
+                
+            } catch (error) {
+                console.error('Regular submission failed:', error);
+                
+                try {
+                    // ลองส่งด้วยวิธี no-cors
+                    await submitFormCORS(formData);
+                    
+                    // ถ้าไม่มี error แสดงว่าส่งสำเร็จ
+                    loadingEl.style.display = 'none';
+                    successMsg.style.display = 'block';
+                    submitBtn.disabled = false;
+                    
+                    successMsg.scrollIntoView({ behavior: 'smooth' });
+                    
+                    setTimeout(function() {
+                        document.getElementById('vendingForm').reset();
+                        successMsg.style.display = 'none';
+                        document.getElementById('debugInfo').style.display = 'none';
+                    }, 5000);
+                    
+                } catch (corsError) {
+                    console.error('CORS submission also failed:', corsError);
+                    
+                    // แสดงข้อความ error
+                    loadingEl.style.display = 'none';
+                    submitBtn.disabled = false;
+                    errorText.textContent = `เกิดข้อผิดพลาด: ${error.message}. กรุณาตรวจสอบ URL ของ Google Apps Script หรือลองใหม่อีกครั้ง`;
+                    errorMsg.style.display = 'block';
+                    errorMsg.scrollIntoView({ behavior: 'smooth' });
+                }
+            }
         });
 
         // ฟังก์ชันจัดรูปแบบเบอร์โทรศัพท์
@@ -532,7 +632,6 @@
                 return;
             }
 
-            // แสดงสถานะการโหลด
             btn.classList.add('loading');
             btn.innerHTML = '<span class="icon">⏳</span>';
             showLocationStatus('loading', '📍 กำลังค้นหาตำแหน่งของคุณ...');
@@ -542,18 +641,14 @@
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude;
                     
-                    // เก็บพิกัด
                     latInput.value = lat;
                     lngInput.value = lng;
 
-                    // แปลงพิกัดเป็นที่อยู่
                     fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=th`)
                         .then(response => response.json())
                         .then(data => {
                             let address = '';
-                            if (data.locality) {
-                                address += data.locality;
-                            }
+                            if (data.locality) address += data.locality;
                             if (data.city && data.city !== data.locality) {
                                 address += (address ? ', ' : '') + data.city;
                             }
@@ -573,7 +668,6 @@
                             }
                         })
                         .catch(error => {
-                            // หากแปลงที่อยู่ไม่ได้ ใช้พิกัดแทน
                             locationInput.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
                             showLocationStatus('success', '✅ ได้พิกัดแล้ว: ' + locationInput.value);
                         })
@@ -606,7 +700,7 @@
                 {
                     enableHighAccuracy: true,
                     timeout: 10000,
-                    maximumAge: 300000 // 5 นาที
+                    maximumAge: 300000
                 }
             );
         });
